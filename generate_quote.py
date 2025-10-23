@@ -12,6 +12,73 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from datetime import datetime
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+import random
+
+
+def generate_placeholder_image(width, height, seed=None, text=""):
+    """
+    Generate a placeholder image locally using PIL/Pillow.
+
+    This function creates colorful placeholder images for testing purposes.
+    In production, you can replace this with:
+    - Actual product images from your database/storage
+    - Images from URLs (e.g., product.image_url)
+    - Images from local file paths
+    - External services like https://picsum.photos/200/300 (if accessible)
+
+    Example of using a real image from a URL:
+        response = requests.get(product.image_url)
+        return BytesIO(response.content)
+
+    Args:
+        width: Image width in pixels
+        height: Image height in pixels
+        seed: Optional seed for consistent colors
+        text: Text to display on the image
+    Returns:
+        BytesIO object containing the image data
+    """
+    # Set random seed for consistent colors
+    if seed is not None:
+        random.seed(seed)
+
+    # Generate a random pastel color
+    r = random.randint(100, 255)
+    g = random.randint(100, 255)
+    b = random.randint(100, 255)
+    bg_color = (r, g, b)
+
+    # Create image
+    img = Image.new('RGB', (width, height), color=bg_color)
+    draw = ImageDraw.Draw(img)
+
+    # Add text if provided
+    if text:
+        try:
+            # Try to use a default font
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+        except:
+            font = ImageFont.load_default()
+
+        # Calculate text position (centered)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        position = ((width - text_width) // 2, (height - text_height) // 2)
+
+        # Draw text with shadow for better visibility
+        shadow_color = (50, 50, 50)
+        draw.text((position[0] + 2, position[1] + 2), text, fill=shadow_color, font=font)
+        draw.text(position, text, fill=(255, 255, 255), font=font)
+
+    # Save to BytesIO
+    img_io = BytesIO()
+    img.save(img_io, format='PNG')
+    img_io.seek(0)
+
+    return img_io
 
 
 def set_cell_border(cell, **kwargs):
@@ -41,6 +108,17 @@ def set_cell_background(cell, fill):
 
 def add_header_section(doc):
     """Add company header information"""
+    # Add logo
+    logo_para = doc.add_paragraph()
+    logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    try:
+        logo_image = generate_placeholder_image(400, 200, seed=1, text="LOGO")
+        logo_run = logo_para.add_run()
+        logo_run.add_picture(logo_image, width=Inches(2.5))
+    except Exception as e:
+        print(f"Warning: Could not add logo image: {e}")
+        logo_para.add_run('[LOGO]')
+
     # Company name and website
     header = doc.add_paragraph()
     header.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -151,7 +229,7 @@ def add_products_table(doc, products):
         run.font.color.rgb = RGBColor(255, 255, 255)
 
     # Add product rows
-    for product in products:
+    for idx, product in enumerate(products):
         row_cells = table.add_row().cells
 
         # Marca
@@ -160,10 +238,17 @@ def add_products_table(doc, products):
         # Descripción
         row_cells[1].text = product['descripcion']
 
-        # Imagen Referencia (placeholder)
+        # Imagen Referencia
         p = row_cells[2].paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run('[IMAGEN]')
+        try:
+            # Use different seed for each product to get different images
+            product_image = generate_placeholder_image(300, 300, seed=idx + 10, text=f"P{idx+1}")
+            img_run = p.add_run()
+            img_run.add_picture(product_image, width=Inches(1.2))
+        except Exception as e:
+            print(f"Warning: Could not add product image {idx}: {e}")
+            p.add_run('[IMAGEN]')
 
         # Código
         row_cells[3].text = product['codigo']
